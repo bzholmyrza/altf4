@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -35,8 +34,8 @@ func index(w http.ResponseWriter, r *http.Request) {
 func ws(w http.ResponseWriter, r *http.Request) {
 	conn, _ := upgrader.Upgrade(w, r, nil) // error ignored for sake of simplicity
 	ch := make(chan string)
-	go volume(ch)
 	for {
+		go volume(ch)
 		// Write message back to browser
 		err := conn.WriteMessage(1, []byte(<-ch))
 		time.Sleep(time.Second)
@@ -53,7 +52,7 @@ type Response struct {
 	Asks         [][]string `json:"asks"`
 }
 
-func volume(ch chan string) strings.Builder {
+func volume(ch chan string) {
 	response, err := http.Get("https://api.binance.com/api/v3/depth?symbol=MANABTC&limit=10")
 	if err != nil {
 		fmt.Print(err.Error())
@@ -68,21 +67,22 @@ func volume(ch chan string) strings.Builder {
 
 	var sumBid float64
 	var sumAsk float64
+	for i := 0; i < 10; i++ {
 
-	for {
-		bid, err := strconv.ParseFloat(res.Bids[0][1], 64)
+		bidP, err := strconv.ParseFloat(res.Bids[i][0], 64)
+		bidQ, err := strconv.ParseFloat(res.Bids[i][1], 64)
 		if err != nil {
 			log.Fatal(err)
 		}
-		sumBid += bid
+		sumBid = bidP*bidQ + sumBid
 
-		ask, err := strconv.ParseFloat(res.Bids[0][1], 64)
+		askP, err := strconv.ParseFloat(res.Asks[i][0], 64)
+		askQ, err := strconv.ParseFloat(res.Asks[i][1], 64)
 		if err != nil {
 			log.Fatal(err)
 		}
-		sumAsk += ask
-
-		ch <- fmt.Sprintf("ID: %v, sumBid = %v, sumAsk = %v", res.LastUpdateID, sumBid, sumBid)
-		log.Printf("DATA:\t ID: %v, sumBid = %v, sumAsk = %v\n", res.LastUpdateID, sumBid, sumBid)
+		sumAsk = askP*askQ + sumAsk
 	}
+	ch <- fmt.Sprintf("ID: %v, sumBid = %v, sumAsk = %v", res.LastUpdateID, sumBid, sumBid)
+	log.Printf("DATA:\t ID: %v, sumBid = %v, sumAsk = %v\n", res.LastUpdateID, sumBid, sumBid)
 }
